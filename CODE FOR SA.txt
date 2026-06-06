@@ -1,0 +1,71 @@
+import yfinance as yf
+import pandas as pd
+import numpy as np 
+
+# ==========================================
+# PART 1: DATA ENGINEERING (The Fetcher)
+# ==========================================
+# We define the target stock (DBS Group) and fetch 5 years of history.
+TICKER_SYMBOL = "D05.SI"
+print(f"🚀 STARTING: Fetching data for {TICKER_SYMBOL}...")
+
+ticker = yf.Ticker(TICKER_SYMBOL)
+df = ticker.history(period="5y")
+
+# ==========================================
+# PART 2: FINANCIAL MODELING (The Logic)
+# ==========================================
+print("📊 CALCULATING: Trend & Momentum Indicators...")
+
+# A. TREND INDICATORS (Simple Moving Averages)
+# SMA_50 = Short-term trend (The 'Fast' Line)
+df['SMA_50'] = df['Close'].rolling(window=50).mean()
+
+# SMA_200 = Long-term trend (The 'Slow' Line)
+df['SMA_200'] = df['Close'].rolling(window=200).mean()
+
+# B. SIGNAL GENERATION (Golden Cross Logic)
+# Create a 'Signal' column: 1 = BUY, 0 = SELL
+df['Signal'] = 0 
+# Logic: If the Fast Line is above the Slow Line, we are in a Bull Market (Buy)
+df.loc[df['SMA_50'] > df['SMA_200'], 'Signal'] = 1
+df.loc[df['SMA_50'] < df['SMA_200'], 'Signal'] = 0
+
+# C. MOMENTUM INDICATOR (RSI)
+# 1. Calculate daily price changes
+delta = df['Close'].diff()
+
+# 2. Separate gains and losses
+gain = (delta.where(delta > 0, 0)).rolling(window=14).mean()
+loss = (-delta.where(delta < 0, 0)).rolling(window=14).mean()
+
+# 3. Calculate Relative Strength (RS)
+rs = gain / loss
+
+# 4. Calculate RSI (0 to 100)
+df['RSI'] = 100 - (100 / (1 + rs))
+
+# ==========================================
+# PART 3: CLEANING & EXPORT (The Delivery)
+# ==========================================
+print("🧹 CLEANING: Removing empty rows...")
+
+# Drop the first 200 rows where SMA_200 is blank (NaN)
+# This prevents Power BI "Type Mismatch" errors.
+df.dropna(inplace=True)
+
+# Reset index so 'Date' becomes a normal column we can use in charts
+df.reset_index(inplace=True)
+
+# Ensure Signal is an Integer (0 or 1), not a float (1.0)
+df['Signal'] = df['Signal'].astype(int)
+
+# Save to CSV
+output_filename = "dbs_stock_data.csv"
+df.to_csv(output_filename, index=False)
+
+print("-" * 40)
+print(f"✅ SUCCESS: Data saved to '{output_filename}'")
+print(f"   - Rows: {len(df)}")
+print(f"   - Columns: {list(df.columns)}")
+print("-" * 40)
